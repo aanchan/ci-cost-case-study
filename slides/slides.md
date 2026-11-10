@@ -36,7 +36,11 @@ Why three platforms: two bugs had only appeared on Windows, and could never have
 
 The Windows job took 754 seconds, or approximately 12.5 minutes.
 
-The job installed Python dependencies, compiled the C++ library, and ran tests.
+The job performed three activities:
+
+- It installed Python dependencies.
+- It compiled the C++ library.
+- It ran tests.
 
 **Which activity took the most time, and what proportion of the job did it account for?**
 
