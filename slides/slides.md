@@ -34,7 +34,7 @@ Why three platforms: two bugs had only appeared on Windows, and could never have
 
 # Pause and Consider
 
-The Windows job took 754 seconds, or approximately 12.5 minutes.
+The CI job running on Windows took 754 seconds, or approximately 12.5 minutes.
 
 The job performed three activities:
 
