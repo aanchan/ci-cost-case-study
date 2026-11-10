@@ -47,6 +47,26 @@ It does three things:
 
 ---
 
+# Where did the time go?
+
+**Before: time spent in each CI job**
+
+| Job | Total job time | Installing dependencies |
+|---|---:|---:|
+| Windows | 754 s | **706 s** |
+| Ubuntu (Linux) | 323 s | 309 s |
+| Ubuntu + KenLM (Linux) | 408 s | 293 s |
+| macOS | 71 s | 58 s |
+
+Installing dependencies took a large share on every job, but the
+**Windows install was the longest**.
+
+<!--
+Each row is a separate job; these jobs can run in parallel. KenLM is an extra language-model dependency tested in a separate Linux job.
+-->
+
+---
+
 # The answer
 
 **Windows job: 754 seconds**
@@ -115,16 +135,21 @@ needs_reference = pytest.mark.skipif(
 
 ---
 
-# Before and after
+# Did the other jobs get faster too?
 
-| Job | Before | After |
-|---|---|---|
-| Ubuntu | 323 s | 45 s |
-| Ubuntu + KenLM | 408 s | 156 s |
-| Windows | 754 s | **128 s** |
-| macOS | 71 s | 17 s |
+| Job | Before | After | Time saved |
+|---|---:|---:|---:|
+| Ubuntu (Linux) | 323 s | 45 s | 278 s |
+| Ubuntu + KenLM (Linux) | 408 s | 156 s | 252 s |
+| Windows | 754 s | 128 s | **626 s** |
+| macOS | 71 s | 17 s | 54 s |
 
-Same platforms. Same tests that matter. A fraction of the time.
+**Yes: all four jobs were faster in the recorded runs.**
+All platforms remain; comparison tests now run on Linux.
+
+<!--
+These are individual job durations from one before run and one after run, not the elapsed time of the entire workflow. The changes included dependency installation and caching; the measurements do not isolate the effect of each change.
+-->
 
 ---
 
