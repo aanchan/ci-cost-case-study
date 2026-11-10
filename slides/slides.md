@@ -6,24 +6,25 @@ paginate: true
 
 <!-- Render: npx @marp-team/marp-cli slides.md --pdf  (or --pptx) -->
 
-# Why was our test bill so high?
+# Reducing the Cost of Continuous Integration
 
-### A real project: 59 billable minutes per run → 20
+A case study in measuring and improving a cross-platform build.
+
+The estimated cost per workflow run fell from 59 to 20 billable minutes.
 
 <!--
-Every number comes from the GitHub Actions API. No platform dropped, no test deleted.
+The job durations come from the GitHub Actions API; billable minutes are estimates based on those durations. No platform was dropped and no test was deleted.
 -->
 
 ---
 
-# The setup
+# Project and CI Workflow
 
-- A small C++ library with a Python wrapper
-- Shipped on **Linux, macOS and Windows**
-- **CI** = a robot that builds and tests the code on all three, every time you push
-- Every robot-minute costs money, and some platforms cost more than others
+The project is a C++ library with a Python interface that supports Linux, macOS, and Windows.
 
-**Cost: about 59 billable minutes per run**
+Continuous integration (CI) automatically builds and tests the software when code changes. The workflow runs separate jobs on each operating system, plus an additional Linux job with a language-model dependency.
+
+The initial workflow consumed an estimated 59 billable minutes per run.
 
 <!--
 Why three platforms: two bugs had only appeared on Windows, and could never have failed on a developer's Mac.
@@ -31,25 +32,21 @@ Why three platforms: two bugs had only appeared on Windows, and could never have
 
 ---
 
-# 🤔 Pause and guess
+# Pause and Consider
 
-**One Windows job took 754 seconds (about 12.5 minutes).**
+The Windows job took 754 seconds, or approximately 12.5 minutes.
 
-It does three things:
+The job installed Python dependencies, compiled the C++ library, and ran tests.
 
-1. Compile the C++ library
-2. Run the tests
-3. Install the Python packages the tests need
+**Which activity took the most time, and what proportion of the job did it account for?**
 
-### Which one took the most time? What share of the 754 s?
-
-*(Pause the video and think before you continue.)*
+Pause the video and consider your answer before continuing.
 
 ---
 
-# Where did the time go?
+# Where Was Time Spent?
 
-**Before: time spent in each CI job**
+The following measurements show the duration of each job before the changes.
 
 | Job | Total job time | Installing dependencies |
 |---|---:|---:|
@@ -58,8 +55,7 @@ It does three things:
 | Ubuntu + KenLM (Linux) | 408 s | 293 s |
 | macOS | 71 s | 58 s |
 
-Installing dependencies took a large share on every job, but the
-**Windows install was the longest**.
+Installing dependencies accounted for a substantial share of each job. The Windows installation took the longest.
 
 <!--
 Each row is a separate job; these jobs can run in parallel. KenLM is an extra language-model dependency tested in a separate Linux job.
@@ -67,18 +63,18 @@ Each row is a separate job; these jobs can run in parallel. KenLM is an extra la
 
 ---
 
-# The answer
+# The Windows Job in Detail
 
-**Windows job: 754 seconds**
+The Windows job took 754 seconds in total.
 
-```
-Install dependencies  ██████████████████████████████████▌  706 s  (94%)
-Compile library       █                                      22 s
-Run tests             ▏                                       5 s
-Everything else       █                                      21 s
-```
+| Activity | Duration |
+|---|---:|
+| Installing dependencies | 706 s (94%) |
+| Compiling the library | 22 s |
+| Running tests | 5 s |
+| Other steps | 21 s |
 
-The slowest step was not the one the job is named after.
+Dependency installation, rather than compilation or testing, accounted for most of the job.
 
 <!--
 Same pattern on every job: Ubuntu 96%, macOS 82%, Ubuntu + KenLM 72%.
@@ -86,37 +82,33 @@ Same pattern on every job: Ubuntu 96%, macOS 82%, Ubuntu + KenLM 72%.
 
 ---
 
-# The obvious fix
+# Choosing an Approach
 
-An AI assistant's first suggestion was to **cut a platform**.
+An AI assistant initially suggested removing a platform from the workflow.
 
-I asked it to **measure first**.
+I asked it to measure the workflow first. The measurements showed that dependency installation accounted for 94% of the Windows job.
 
-The data showed **94% of the time was one dependency install.**
+This evidence suggested an opportunity to reduce the cost without removing a platform.
 
 <!--
-The point is not that the AI was bad. Any of us, or a teammate, might reach for the obvious fix. Measure before you act.
+The purpose is to illustrate why a proposed optimization should be evaluated against measurements before it is adopted.
 -->
 
 ---
 
-# Why was installing so slow?
+# Why Was Dependency Installation Slow?
 
-1. The tests compare our library against another one: `pyctcdecode`
-2. `pyctcdecode` requires an **old NumPy** (below version 2)
-3. That old NumPy has **no ready-made Windows download** for our Python version
-4. So pip **builds NumPy from source: about 12 minutes**
-5. …and the result crashed when imported
+Some tests compare the library with a reference implementation called `pyctcdecode`, which requires a version of NumPy older than 2.0.
 
-🔁 The project existed to **get rid of** `pyctcdecode`.
-The dependency being deleted was 94% of the cost of testing its replacement.
+For Python 3.13 on Windows, that older NumPy version had no prebuilt package. The package installer therefore built it from source, which took several minutes. In a separate observed failure, the resulting NumPy installation also crashed on import.
+
+The project was intended to replace `pyctcdecode`, yet installing it dominated the Windows CI job.
 
 ---
 
-# The fix: install only what each job needs
+# Limiting Dependencies to the Jobs That Need Them
 
-The comparison tool is only needed by the tests that **compare**.
-The Windows job just proves: it builds, it's named right, it loads, it decodes.
+Only the comparison tests require the reference implementation. The workflow was changed to install it on Linux and skip those tests when it is unavailable.
 
 ```python
 try:
@@ -130,12 +122,11 @@ needs_reference = pytest.mark.skipif(
 )
 ```
 
-- Install it on **Linux only**, where ready-made downloads exist
-- On other platforms those tests skip; **21 of 47 tests** still run
+On Windows and macOS, 21 of the 47 tests still run. These jobs continue to check that the library builds, loads, and decodes.
 
 ---
 
-# Did the other jobs get faster too?
+# Job Durations Before and After
 
 | Job | Before | After | Time saved |
 |---|---:|---:|---:|
@@ -144,8 +135,7 @@ needs_reference = pytest.mark.skipif(
 | Windows | 754 s | 128 s | **626 s** |
 | macOS | 71 s | 17 s | 54 s |
 
-**Yes: all four jobs were faster in the recorded runs.**
-All platforms remain; comparison tests now run on Linux.
+All four jobs were faster in the recorded runs. All platforms remain in the workflow, while comparison tests run on Linux.
 
 <!--
 These are individual job durations from one before run and one after run, not the elapsed time of the entire workflow. The changes included dependency installation and caching; the measurements do not isolate the effect of each change.
@@ -153,9 +143,9 @@ These are individual job durations from one before run and one after run, not th
 
 ---
 
-# The billing twist
+# Accounting for Platform Multipliers
 
-GitHub **rounds each job up to a whole minute, then multiplies**:
+The case study estimates billable minutes by rounding each job up to a whole minute and applying a platform multiplier.
 
 | Runner | Multiplier |
 |---|---|
@@ -163,7 +153,13 @@ GitHub **rounds each job up to a whole minute, then multiplies**:
 | Windows | ×2 |
 | macOS | **×10** |
 
-macOS now does **17 seconds** of work → billed **10 minutes**.
+Under this model, the 17-second macOS job is estimated at 10 billable minutes.
+
+---
+
+# Estimated Billable Minutes
+
+The table applies the case study's rounding and multiplier model to each recorded job.
 
 | Job | Billable before | Billable after |
 |---|---|---|
@@ -179,11 +175,11 @@ Worked example: Windows before = 754 s → 13 min → ×2 = 26. macOS after = 17
 
 ---
 
-# Three cheap fixes anyone can make
+# Additional Workflow Changes
 
-**1. Don't run twice for the same commit.** A branch listed by name *and* with a pull request ran the full matrix twice.
+The workflow was also changed to avoid duplicate runs for commits that triggered both a branch push and a pull request.
 
-**2. Cancel outdated runs.** Pushing 3 times in a row ran 3 full matrices.
+Concurrency settings cancel an earlier run when a newer run in the same group starts:
 
 ```yaml
 concurrency:
@@ -191,45 +187,40 @@ concurrency:
   cancel-in-progress: true
 ```
 
-**3. Cache downloads.** Reuse what was already built instead of rebuilding.
+Dependency caching allows previously downloaded or built packages to be reused.
 
 ---
 
-# Lessons
+# Conclusions
 
-1. **Measure before you change anything**: the answer was invisible until we looked
-2. **A slow step is often a design signal**, not just a tuning problem
-3. **Know the billing model** or you'll tune the wrong number
-4. **Split "the tests" by what they need**, not by folder
+1. Measure individual CI steps before deciding what to optimize.
+2. Examine whether a slow dependency is necessary for every job.
+3. Consider the billing model as well as elapsed time.
+4. Organize tests and dependencies according to what each job needs.
 
-⚠️ One project. The 94% is not a law; **the method is what transfers.**
-
-*Method: `measure.sh`, three `gh api` calls that work on any repo.*
+This case study concerns one project. Its measurements should not be generalized, but its method can be applied elsewhere.
 
 ---
 
-# A mistake worth keeping
+# A Dependency Conflict
 
 ```
 numpy==2.2.1
 pyctcdecode==0.5.0    # requires numpy<2
 ```
 
-These contradict. pip refuses the whole install.
+These requirements are incompatible: `pyctcdecode` requires NumPy below version 2, while the file pins version 2.2.1. Pip cannot resolve both requirements in a single installation.
 
-- 3 of 4 jobs passed (they installed in separate commands)
-- Only the job that used the file failed
-- **CI caught it.** That's the argument for having CI.
+Three of the four jobs passed because they installed the packages separately. The job that used the requirements file failed, allowing CI to expose the conflict.
 
 ---
 
-# Try it yourself
+# Examining the Evidence
 
-- Repo: https://github.com/aanchan/ci-cost-case-study
-- `workflows/before.yml` and `workflows/after.yml`: the real files
-- `data/timings.json`: raw data for both runs
+The repository is available at https://github.com/aanchan/ci-cost-case-study.
 
-**Exercise:** from the JSON, compute the billable minutes for the Windows job *before*.
-*(Hint: seconds → round up to minutes → multiply.)*
+The `workflows/before.yml` and `workflows/after.yml` files show the workflow changes. The `data/timings.json` file contains the recorded job and step durations.
 
-**Discuss:** where could a hidden slow step be costing *your* project?
+**Exercise:** Use the JSON data to calculate the estimated billable minutes for the Windows job before the changes. Round the duration up to whole minutes, then apply the Windows multiplier.
+
+Consider where a similarly slow step might occur in another project.
